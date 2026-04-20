@@ -53,15 +53,16 @@ Answer: "Python is a high-level language..."
 - Exposes a simple HTTP API at `localhost:11434`
 - Think of it like Docker, but for AI models
 
-**2. nomic-embed-text** — Text-to-Vector Converter
-- Converts text into 768 numbers that capture its meaning
+**2. mxbai-embed-large** — Text-to-Vector Converter
+- Converts text into 1024 numbers that capture semantic meaning
 - Example:
   ```
   Input:  "Python is a programming language"
-  Output: [0.25, -0.18, 0.92, 0.15, ..., -0.44]
+  Output: [0.25, -0.18, 0.92, 0.15, ..., -0.44]  (1024 dimensions)
   ```
 - Used to **find relevant documents** (similar texts have similar vectors)
-- **Speed:** ~1ms per document chunk
+- **Speed:** ~5-10ms per document chunk
+- Better semantic understanding than older embedding models
 
 **3. Qwen3:14b** — Answer Generator
 - A 14-billion parameter language model (like ChatGPT, but open-source)

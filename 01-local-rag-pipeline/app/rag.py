@@ -24,7 +24,7 @@ class RAGEngine:
     async def init(self):
         """Initialize RAG components."""
         self.embeddings = OllamaEmbeddings(
-            model="nomic-embed-text",
+            model="mxbai-embed-large",
             base_url=OLLAMA_BASE_URL,
         )
         self.llm = OllamaLLM(
@@ -68,22 +68,59 @@ class RAGEngine:
 
         return doc_id
 
-    async def query(self, query: str, top_k: int = 3) -> tuple[str, list]:
-        """Query the RAG system."""
-        # Retrieve relevant documents with scores
+    async def query(self, query: str, top_k: int = 3, similarity_threshold: float = 0.5) -> tuple[str, list]:
+        """Query the RAG system.
+
+        Args:
+            query: The search query
+            top_k: Maximum number of documents to retrieve
+            similarity_threshold: Minimum similarity score to include a document (0-1)
+        """
+        # Retrieve more results than needed to re-rank
         results = await asyncio.to_thread(
-            self.vector_store.similarity_search_with_score,
+            self.vector_store.similarity_search,
             query,
-            k=top_k
+            k=top_k * 2
         )
 
         if not results:
             return "No documents found in the knowledge base. Please ingest documents first.", []
 
-        # Separate docs and scores, sort by score (higher is better)
-        docs_with_scores = [(doc, score) for doc, score in results]
-        docs_with_scores.sort(key=lambda x: x[1], reverse=True)
-        results = [doc for doc, _ in docs_with_scores]
+        # Re-rank by manually computing cosine similarity
+        import numpy as np
+
+        query_embedding = await asyncio.to_thread(
+            self.embeddings.embed_query,
+            query
+        )
+
+        # Compute similarities for each result
+        scored_results = []
+        for doc in results:
+            doc_embedding = await asyncio.to_thread(
+                self.embeddings.embed_query,
+                doc.page_content
+            )
+            # Cosine similarity
+            similarity = np.dot(query_embedding, doc_embedding) / (
+                np.linalg.norm(query_embedding) * np.linalg.norm(doc_embedding)
+            )
+            scored_results.append((doc, similarity))
+
+        # Sort by similarity (highest first)
+        scored_results.sort(key=lambda x: x[1], reverse=True)
+
+        # DEBUG: Show scores
+        print(f"\n[DEBUG] Query: '{query}' - Similarity scores (threshold: {similarity_threshold}):")
+        for doc, score in scored_results:
+            status = "✓" if score >= similarity_threshold else "✗"
+            print(f"  {doc.metadata.get('title')}: {score:.4f} {status}")
+
+        # Filter by similarity threshold and limit to top_k
+        results = [doc for doc, score in scored_results if score >= similarity_threshold][:top_k]
+
+        if not results:
+            return f"No documents found matching your query. Please try a different search or check the knowledge base.", []
 
         context = "\n\n".join([doc.page_content for doc in results])
 

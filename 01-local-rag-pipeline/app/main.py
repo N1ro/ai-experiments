@@ -17,6 +17,7 @@ app = FastAPI(title="Local RAG Pipeline", lifespan=lifespan)
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 3
+    similarity_threshold: float = 0.5
 
 class QueryResponse(BaseModel):
     answer: str
@@ -44,7 +45,11 @@ async def ingest_documents(files: list[UploadFile] = File(...)):
 async def query(request: QueryRequest):
     """Query the RAG system."""
     try:
-        answer, sources = await rag.query(request.query, top_k=request.top_k)
+        answer, sources = await rag.query(
+            request.query,
+            top_k=request.top_k,
+            similarity_threshold=request.similarity_threshold
+        )
         return QueryResponse(answer=answer, sources=sources)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
