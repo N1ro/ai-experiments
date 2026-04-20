@@ -67,6 +67,15 @@ async def delete_document(doc_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/documents")
+async def delete_all_documents():
+    """Delete all documents from the index."""
+    try:
+        await rag.delete_all_documents()
+        return {"status": "all documents deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

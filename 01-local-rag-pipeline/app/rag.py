@@ -1,31 +1,21 @@
 import uuid
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
-from langchain_community.vectorstores.pgvector import PGVector
+from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 import asyncio
-from sqlalchemy import create_engine, Column, String, Integer, text
-from sqlalchemy.orm import declarative_base, Session
-from pgvector.sqlalchemy import Vector
 import os
+import shutil
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/ai_experiments")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-
-Base = declarative_base()
-
-class DocumentMetadata(Base):
-    __tablename__ = "documents"
-    id = Column(String, primary_key=True)
-    title = Column(String)
-    chunk_count = Column(Integer, default=0)
+CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 
 class RAGEngine:
     def __init__(self):
         self.embeddings = None
         self.llm = None
         self.vector_store = None
-        self.engine = None
+        self.documents_meta = {}
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
@@ -41,20 +31,16 @@ class RAGEngine:
             model="qwen3:14b",
             base_url=OLLAMA_BASE_URL,
         )
-        self.engine = create_engine(DATABASE_URL)
-        Base.metadata.create_all(self.engine)
-
-        self.vector_store = PGVector(
+        self.vector_store = Chroma(
             embedding_function=self.embeddings,
             collection_name="rag_documents",
-            connection_string=DATABASE_URL,
-            use_jsonb=True,
+            persist_directory=CHROMA_DB_PATH,
         )
 
     async def cleanup(self):
         """Cleanup resources."""
-        if self.engine:
-            self.engine.dispose()
+        if self.vector_store:
+            self.vector_store.persist()
 
     async def ingest(self, title: str, content: str) -> str:
         """Ingest a document."""
@@ -74,25 +60,30 @@ class RAGEngine:
             documents
         )
 
-        with Session(self.engine) as session:
-            doc_meta = DocumentMetadata(
-                id=doc_id,
-                title=title,
-                chunk_count=len(chunks)
-            )
-            session.add(doc_meta)
-            session.commit()
+        # Store metadata in memory
+        self.documents_meta[doc_id] = {
+            "title": title,
+            "chunk_count": len(chunks)
+        }
 
         return doc_id
 
     async def query(self, query: str, top_k: int = 3) -> tuple[str, list]:
         """Query the RAG system."""
-        # Retrieve relevant documents
+        # Retrieve relevant documents with scores
         results = await asyncio.to_thread(
-            self.vector_store.similarity_search,
+            self.vector_store.similarity_search_with_score,
             query,
             k=top_k
         )
+
+        if not results:
+            return "No documents found in the knowledge base. Please ingest documents first.", []
+
+        # Separate docs and scores, sort by score (higher is better)
+        docs_with_scores = [(doc, score) for doc, score in results]
+        docs_with_scores.sort(key=lambda x: x[1], reverse=True)
+        results = [doc for doc, _ in docs_with_scores]
 
         context = "\n\n".join([doc.page_content for doc in results])
 
@@ -121,27 +112,41 @@ Answer:"""
 
     async def list_documents(self) -> list[dict]:
         """List all documents."""
-        with Session(self.engine) as session:
-            docs = session.query(DocumentMetadata).all()
-            return [
-                {
-                    "id": doc.id,
-                    "title": doc.title,
-                    "chunks": doc.chunk_count
-                }
-                for doc in docs
-            ]
+        return [
+            {
+                "id": doc_id,
+                "title": data["title"],
+                "chunks": data["chunk_count"]
+            }
+            for doc_id, data in self.documents_meta.items()
+        ]
 
     async def delete_document(self, doc_id: str):
         """Delete a document and its chunks."""
-        with Session(self.engine) as session:
-            session.query(DocumentMetadata).filter(
-                DocumentMetadata.id == doc_id
-            ).delete()
-            session.commit()
-
         # Delete from vector store
+        collection = self.vector_store._collection
         await asyncio.to_thread(
-            self.vector_store.delete,
-            filter={"doc_id": doc_id}
+            collection.delete,
+            where={"doc_id": {"$eq": doc_id}}
         )
+
+        # Remove from metadata
+        if doc_id in self.documents_meta:
+            del self.documents_meta[doc_id]
+
+    async def delete_all_documents(self):
+        """Delete all documents from the index."""
+        # Delete the entire collection and recreate it
+        await asyncio.to_thread(
+            self.vector_store.delete_collection
+        )
+
+        # Recreate the collection
+        self.vector_store = Chroma(
+            embedding_function=self.embeddings,
+            collection_name="rag_documents",
+            persist_directory=CHROMA_DB_PATH,
+        )
+
+        # Clear metadata
+        self.documents_meta.clear()
