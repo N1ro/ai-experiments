@@ -1,0 +1,16 @@
+.env
+*.pem
+*.key
+*.p12
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.log
+node_modules/
