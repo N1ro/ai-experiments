@@ -189,13 +189,26 @@ View all indexed documents.
 
 ### delete_document
 
-Remove a document and its embeddings.
+Remove a single document and its embeddings by ID.
 
 **What it does:**
 
-- Takes a document ID
+- Takes a document ID (get it from `list_documents`)
 - Deletes all its chunks from ChromaDB
 - Removes metadata from the system
+
+### delete_all_documents
+
+Wipe the entire knowledge base in one step.
+
+**What it does:**
+
+- Deletes all documents and their embeddings from ChromaDB
+- Useful after a test session where you've added throwaway documents
+- Equivalent to `make reset` (which also re-ingests sample docs)
+
+**Example:** "Delete all documents from my knowledge base"
+→ Knowledge base wiped clean
 
 ## Usage Example
 
@@ -331,7 +344,7 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-Covers all four tool handlers (14 tests): `query_knowledge_base`, `ingest_document`, `list_documents`, `delete_document` — including validation and error cases.
+Covers all five tool handlers (16 tests): `query_knowledge_base`, `ingest_document`, `list_documents`, `delete_document`, `delete_all_documents` — including validation and error cases.
 
 ## Troubleshooting
 
