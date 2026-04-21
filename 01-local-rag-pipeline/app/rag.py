@@ -25,16 +25,16 @@ class RAGEngine:
         """Initialize RAG components."""
         self.embeddings = OllamaEmbeddings(
             model="mxbai-embed-large",
-            base_url=OLLAMA_BASE_URL,
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         )
         self.llm = OllamaLLM(
             model="qwen3:14b",
-            base_url=OLLAMA_BASE_URL,
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         )
         self.vector_store = Chroma(
             embedding_function=self.embeddings,
-            collection_name="rag_documents",
-            persist_directory=CHROMA_DB_PATH,
+            collection_name=os.getenv("CHROMA_COLLECTION_NAME", "rag_documents"),
+            persist_directory=os.getenv("CHROMA_DB_PATH", "./chroma_db"),
         )
 
     async def cleanup(self):
@@ -178,11 +178,11 @@ Answer:"""
             self.vector_store.delete_collection
         )
 
-        # Recreate the collection
+        # Recreate the collection using the same runtime settings
         self.vector_store = Chroma(
             embedding_function=self.embeddings,
-            collection_name="rag_documents",
-            persist_directory=CHROMA_DB_PATH,
+            collection_name=os.getenv("CHROMA_COLLECTION_NAME", "rag_documents"),
+            persist_directory=os.getenv("CHROMA_DB_PATH", "./chroma_db"),
         )
 
         # Clear metadata

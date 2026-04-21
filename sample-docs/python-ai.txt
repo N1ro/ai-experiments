@@ -1,0 +1,10 @@
+Python is the dominant language for AI and data science due to its simplicity and rich ecosystem.
+
+Core libraries:
+- NumPy: numerical computing and array operations
+- Pandas: data manipulation and analysis
+- scikit-learn: classical machine learning algorithms
+- TensorFlow / PyTorch: deep learning frameworks
+- LangChain: building applications with large language models
+
+Python's readability and the availability of pre-built AI libraries make it the go-to choice for both research and production AI systems.
