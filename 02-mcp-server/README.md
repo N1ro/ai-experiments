@@ -58,33 +58,52 @@ Then proceed to step 2 below.
 
 ### Option B: Manual Setup
 
-#### 1. Install dependencies
+**Prerequisites:** Ollama running (`brew services start ollama`)
+
+#### 1. Set up Python environment
 
 ```bash
+# Create virtual environment
+python3 -m venv .venv
+
+# Activate it
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-#### 2. Ensure RAG API is running
-
-The RAG API (Project 1) must be running on `http://localhost:8000`:
+#### 2. Start RAG API in one terminal
 
 ```bash
 cd ../01-local-rag-pipeline
+
+# If not already set up:
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+
+# Start the API
 uvicorn app.main:app --reload
+# API will be running on http://localhost:8000
 ```
 
-#### 3. Start the MCP server
-
-In another terminal:
+#### 3. Start the MCP server in another terminal
 
 ```bash
+cd 02-mcp-server
+source .venv/bin/activate
 python src/rag_mcp_server.py
 ```
 
 ### Configure Claude Desktop
 
-Add to `~/.config/claude/claude_desktop_config.json`:
+Find your Claude Desktop config file:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+Add the MCP server config:
 
 ```json
 {
@@ -97,11 +116,29 @@ Add to `~/.config/claude/claude_desktop_config.json`:
 }
 ```
 
-Replace `/full/path/to` with the absolute path to the `02-mcp-server` directory.
+**Example for macOS:**
+```json
+{
+    "mcpServers": {
+        "rag-local": {
+            "command": "python",
+            "args": ["/Users/niro/projects/ai-experiments/02-mcp-server/src/rag_mcp_server.py"]
+        }
+    }
+}
+```
+
+Replace `/full/path/to` (or the example `/Users/niro/...`) with the **absolute path** to your `02-mcp-server` directory. Get it by running:
+```bash
+cd 02-mcp-server && pwd
+```
 
 ### Restart Claude Desktop
 
-Close and reopen Claude Desktop to load the new MCP server. Check the developer tools to verify the connection.
+1. Close Claude Desktop completely
+2. Wait 5 seconds
+3. Reopen Claude Desktop
+4. Check that the server connects: ⚙️ → Developer Console → look for "rag-local" server status
 
 ## Tools Exposed
 
@@ -202,54 +239,101 @@ This demonstrates **integration across the AI stack**:
 
 ## Testing
 
-### Automated Testing
+### Prerequisites for all testing:
+- ✅ Ollama running: `brew services start ollama`
+- ✅ Models installed: `ollama list` shows `qwen3:14b` and `nomic-embed-text`
+- ✅ Dependencies installed: `make setup` (from repo root)
+
+### Quick Start Testing (Recommended)
 
 ```bash
-# Run all tests
-python -m pytest tests/ -v
-
-# Run specific test file
-python -m pytest tests/test_rag_mcp_server.py -v
-
-# Run with coverage
-python -m pytest tests/ --cov=src
+# From repo root, start both services
+make dev
 ```
 
-### Manual Testing
+This starts:
+- RAG API on `http://localhost:8000`
+- MCP server ready for Claude Desktop
 
-1. **Start both services** (from repo root):
+In another terminal, test the RAG API:
+```bash
+# Check health
+curl http://localhost:8000/health
+
+# Ingest a test document
+curl -X POST "http://localhost:8000/ingest" \
+  -F "files=@/tmp/test.txt" << 'EOF'
+Test document about Python programming.
+Python is used for data science, web development, and AI.
+EOF
+
+# Query it
+curl -X POST "http://localhost:8000/query" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is Python?", "top_k": 1}'
+```
+
+### Manual Testing (if not using make dev)
+
+1. **Terminal 1: Start RAG API**
    ```bash
-   make dev
+   cd 01-local-rag-pipeline
+   source .venv/bin/activate
+   uvicorn app.main:app --reload
+   # Verify: curl http://localhost:8000/health
    ```
-   Services running:
-   - RAG API: http://localhost:8000/health
-   - MCP server: ready for Claude Desktop
 
-2. **Test RAG API directly**:
+2. **Terminal 2: Test RAG API**
    ```bash
-   # Ingest a test document
-   curl -X POST "http://localhost:8000/ingest" \
-     -F "files=@document.txt"
-   
-   # Query it
-   curl -X POST "http://localhost:8000/query" \
-     -H "Content-Type: application/json" \
-     -d '{"query": "Your question", "top_k": 3}'
-   
-   # Check health
-   curl "http://localhost:8000/health"
+   curl http://localhost:8000/health
+   # Should return: {"status":"ok"}
    ```
 
-3. **Test MCP server tools** (via Claude Desktop):
-   - Use `query_knowledge_base` to search your documents
-   - Use `ingest_document` to add new content
-   - Use `list_documents` to see indexed documents
-   - Use `delete_document` to remove specific documents
+3. **Terminal 3: Start MCP server**
+   ```bash
+   cd 02-mcp-server
+   source .venv/bin/activate
+   python src/rag_mcp_server.py
+   # Should see server ready on stdio
+   ```
 
-**Requirements before testing:**
-- Ollama running with required models (`ollama list` should show `qwen3:14b` and `nomic-embed-text`)
-- RAG API must be accessible on `localhost:8000`
-- Python dependencies installed via `make setup`
+### Testing in Claude Desktop
+
+Once the MCP server is running and configured:
+
+1. Open Claude Desktop
+2. Create a new conversation
+3. Use these tools:
+
+   **List documents:**
+   ```
+   You: "What documents do I have indexed?"
+   → Claude uses list_documents tool
+   ```
+
+   **Search documents:**
+   ```
+   You: "Search my knowledge base for Python"
+   → Claude uses query_knowledge_base tool
+   → Returns relevant sections + AI-synthesized answer
+   ```
+
+   **Add a document:**
+   ```
+   You: "Add this to my knowledge base: <paste text>"
+   → Claude uses ingest_document tool
+   → Document is indexed and searchable
+   ```
+
+### Automated Testing (Unit Tests)
+
+If test files exist:
+```bash
+source .venv/bin/activate
+pytest tests/ -v
+```
+
+Note: Test suite may be sparse initially; manual testing verifies integration.
 
 ## Troubleshooting
 
@@ -273,20 +357,23 @@ cd ../01-local-rag-pipeline
 
 ### "MCP server not found" in Claude Desktop
 
-**Problem:** Path in config is incorrect or server not running
+**Problem:** Path in config is incorrect, server not running, or Claude not restarted
 
+**Step 1: Get the absolute path**
 ```bash
-# Verify the config has the FULL absolute path
-cat ~/.config/claude/claude_desktop_config.json
-
-# Get the full path to this directory
-pwd  # in 02-mcp-server directory
-
-# Test server directly
-python src/rag_mcp_server.py
+cd 02-mcp-server
+pwd
+# Copy the output, e.g. /Users/niro/projects/ai-experiments/02-mcp-server
 ```
 
-Paths must be absolute, not relative. Example:
+**Step 2: Update the config**
+
+Find your config file:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+Edit it to add:
 ```json
 {
     "mcpServers": {
@@ -297,6 +384,22 @@ Paths must be absolute, not relative. Example:
     }
 }
 ```
+
+Replace `/Users/niro/...` with the path you copied above.
+
+**Step 3: Verify server is running**
+```bash
+cd 02-mcp-server
+source .venv/bin/activate
+python src/rag_mcp_server.py
+# Should show: RAG MCP Server running on stdio
+```
+
+**Step 4: Restart Claude Desktop**
+- Close Claude completely (not just the window)
+- Wait 5 seconds
+- Reopen Claude
+- Check status in ⚙️ → Developer Console
 
 ### Claude can't find the tools
 
