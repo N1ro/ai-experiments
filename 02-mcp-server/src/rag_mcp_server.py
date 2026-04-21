@@ -5,7 +5,8 @@ import asyncio
 import json
 import httpx
 from mcp.server import Server
-from mcp.types import Tool, TextContent, ToolResult
+from mcp.server.stdio import stdio_server
+from mcp.types import Tool, TextContent, CallToolResult
 import sys
 
 RAG_API_URL = "http://localhost:8000"
@@ -13,7 +14,7 @@ RAG_API_URL = "http://localhost:8000"
 server = Server("rag-mcp-server")
 
 @server.call_tool()
-async def handle_tool_call(name: str, arguments: dict) -> ToolResult:
+async def handle_tool_call(name: str, arguments: dict) -> CallToolResult:
     """Handle tool calls from Claude."""
     if name == "query_knowledge_base":
         return await query_knowledge_base(arguments)
@@ -24,20 +25,20 @@ async def handle_tool_call(name: str, arguments: dict) -> ToolResult:
     elif name == "delete_document":
         return await delete_document(arguments)
     else:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text=f"Unknown tool: {name}")],
-            is_error=True,
+            isError=True,
         )
 
-async def query_knowledge_base(arguments: dict) -> ToolResult:
+async def query_knowledge_base(arguments: dict) -> CallToolResult:
     """Query the RAG knowledge base."""
     query = arguments.get("query")
     top_k = arguments.get("top_k", 3)
 
     if not query:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text="Query is required")],
-            is_error=True,
+            isError=True,
         )
 
     try:
@@ -59,17 +60,17 @@ async def query_knowledge_base(arguments: dict) -> ToolResult:
                 result += f"{i}. {source['title']} (ID: {source['doc_id']})\n"
                 result += f"   {source['content'][:100]}...\n"
 
-            return ToolResult(
+            return CallToolResult(
                 content=[TextContent(type="text", text=result)],
-                is_error=False,
+                isError=False,
             )
     except Exception as e:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text=f"Error querying RAG: {str(e)}")],
-            is_error=True,
+            isError=True,
         )
 
-async def ingest_document(arguments: dict) -> ToolResult:
+async def ingest_document(arguments: dict) -> CallToolResult:
     """Ingest a document from URL or text."""
     url = arguments.get("url")
     title = arguments.get("title", "untitled")
@@ -82,14 +83,14 @@ async def ingest_document(arguments: dict) -> ToolResult:
                 response.raise_for_status()
                 content = response.text
         except Exception as e:
-            return ToolResult(
+            return CallToolResult(
                 content=[TextContent(type="text", text=f"Error fetching URL: {str(e)}")],
-                is_error=True,
+                isError=True,
             )
     elif not content:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text="Either URL or content is required")],
-            is_error=True,
+            isError=True,
         )
 
     try:
@@ -108,17 +109,17 @@ async def ingest_document(arguments: dict) -> ToolResult:
             for doc in data.get("documents", []):
                 result_text += f"Doc ID: {doc.get('doc_id')}\n"
 
-            return ToolResult(
+            return CallToolResult(
                 content=[TextContent(type="text", text=result_text)],
-                is_error=False,
+                isError=False,
             )
     except Exception as e:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text=f"Error ingesting document: {str(e)}")],
-            is_error=True,
+            isError=True,
         )
 
-async def list_documents(arguments: dict) -> ToolResult:
+async def list_documents(arguments: dict) -> CallToolResult:
     """List all documents in the knowledge base."""
     try:
         async with httpx.AsyncClient() as client:
@@ -127,47 +128,47 @@ async def list_documents(arguments: dict) -> ToolResult:
             docs = response.json()
 
             if not docs:
-                return ToolResult(
+                return CallToolResult(
                     content=[TextContent(type="text", text="No documents indexed yet")],
-                    is_error=False,
+                    isError=False,
                 )
 
             result = "Indexed Documents:\n"
             for doc in docs:
                 result += f"- {doc['title']} (ID: {doc['id']}, chunks: {doc['chunks']})\n"
 
-            return ToolResult(
+            return CallToolResult(
                 content=[TextContent(type="text", text=result)],
-                is_error=False,
+                isError=False,
             )
     except Exception as e:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text=f"Error listing documents: {str(e)}")],
-            is_error=True,
+            isError=True,
         )
 
-async def delete_document(arguments: dict) -> ToolResult:
+async def delete_document(arguments: dict) -> CallToolResult:
     """Delete a document from the knowledge base."""
     doc_id = arguments.get("doc_id")
 
     if not doc_id:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text="doc_id is required")],
-            is_error=True,
+            isError=True,
         )
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.delete(f"{RAG_API_URL}/documents/{doc_id}", timeout=10.0)
             response.raise_for_status()
-            return ToolResult(
+            return CallToolResult(
                 content=[TextContent(type="text", text=f"Deleted document {doc_id}")],
-                is_error=False,
+                isError=False,
             )
     except Exception as e:
-        return ToolResult(
+        return CallToolResult(
             content=[TextContent(type="text", text=f"Error deleting document: {str(e)}")],
-            is_error=True,
+            isError=True,
         )
 
 @server.list_tools()
@@ -218,9 +219,9 @@ async def list_tools() -> list[Tool]:
     ]
 
 async def main():
-    async with server:
-        print("RAG MCP Server running", file=sys.stderr)
-        await server.wait_for_exit()
+    async with stdio_server(server) as (read_stream, write_stream):
+        print("RAG MCP Server running on stdio", file=sys.stderr)
+        await server.run(read_stream, write_stream, server.create_initialization_options())
 
 if __name__ == "__main__":
     asyncio.run(main())
