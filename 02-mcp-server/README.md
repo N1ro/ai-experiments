@@ -96,8 +96,14 @@ The MCP server is launched automatically by Claude Desktop. You don't run it you
 
 Find your Claude Desktop config file:
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+  ```bash
+  # Note: path has a space — always quote it
+  open "/Users/niro/Library/Application Support/Claude/claude_desktop_config.json"
+  ```
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+> **Note:** `~/.claude` is the Claude **Code CLI** directory — that is not the same as Claude Desktop's config.
 
 Add the MCP server config. You need two absolute paths — the venv python and the server script:
 
@@ -360,8 +366,8 @@ pwd
 
 **Step 2: Update the config**
 
-Find your config file:
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+Find your config file (macOS path has a space — always quote it):
+- **macOS:** `"/Users/niro/Library/Application Support/Claude/claude_desktop_config.json"`
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
