@@ -61,6 +61,8 @@ This starts the RAG API on `http://localhost:8000`.
 #### 1. Set up Python environment
 
 ```bash
+cd 02-mcp-server
+
 # Create virtual environment
 python3 -m venv .venv
 
@@ -97,13 +99,13 @@ Find your Claude Desktop config file:
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
-Add the MCP server config:
+Add the MCP server config. You need two absolute paths — the venv python and the server script:
 
 ```json
 {
     "mcpServers": {
         "rag-local": {
-            "command": "python",
+            "command": "/full/path/to/02-mcp-server/.venv/bin/python",
             "args": ["/full/path/to/02-mcp-server/src/rag_mcp_server.py"]
         }
     }
@@ -115,17 +117,20 @@ Add the MCP server config:
 {
     "mcpServers": {
         "rag-local": {
-            "command": "python",
+            "command": "/Users/niro/projects/ai-experiments/02-mcp-server/.venv/bin/python",
             "args": ["/Users/niro/projects/ai-experiments/02-mcp-server/src/rag_mcp_server.py"]
         }
     }
 }
 ```
 
-Replace `/full/path/to` (or the example `/Users/niro/...`) with the **absolute path** to your `02-mcp-server` directory. Get it by running:
+Get your absolute path by running:
 ```bash
 cd 02-mcp-server && pwd
+# e.g. /Users/niro/projects/ai-experiments/02-mcp-server
 ```
+
+Replace `/full/path/to` with that output. Use the **venv python** (`.venv/bin/python`), not the system `python`, to ensure the `mcp` package installed via `pip install -r requirements.txt` is used.
 
 ### Restart Claude Desktop
 
@@ -245,9 +250,7 @@ This demonstrates **integration across the AI stack**:
 make dev
 ```
 
-This starts:
-- RAG API on `http://localhost:8000`
-- MCP server ready for Claude Desktop
+This starts the RAG API on `http://localhost:8000`. The MCP server is launched automatically by Claude Desktop — no separate startup needed.
 
 In another terminal, test the RAG API:
 ```bash
@@ -362,12 +365,12 @@ Find your config file:
 - **Linux:** `~/.config/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-Edit it to add:
+Edit it to add (use the venv python, not system python):
 ```json
 {
     "mcpServers": {
         "rag-local": {
-            "command": "python",
+            "command": "/Users/niro/projects/ai-experiments/02-mcp-server/.venv/bin/python",
             "args": ["/Users/niro/projects/ai-experiments/02-mcp-server/src/rag_mcp_server.py"]
         }
     }
@@ -376,15 +379,7 @@ Edit it to add:
 
 Replace `/Users/niro/...` with the path you copied above.
 
-**Step 3: Verify server is running**
-```bash
-cd 02-mcp-server
-source .venv/bin/activate
-python src/rag_mcp_server.py
-# Should show: RAG MCP Server running on stdio
-```
-
-**Step 4: Restart Claude Desktop**
+**Step 3: Restart Claude Desktop**
 - Close Claude completely (not just the window)
 - Wait 5 seconds
 - Reopen Claude
