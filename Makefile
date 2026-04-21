@@ -1,63 +1,85 @@
-.PHONY: help setup dev stop clean test ingest-samples delete-all
+.PHONY: help setup dev stop clean test ingest-samples delete-all reset
 
 help:
 	@echo "AI Experiments — Local Development Setup"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make setup           Install dependencies for projects 01-02"
-	@echo "  make dev             Start RAG API (requires Ollama running)"
+	@echo "  make dev             Start RAG API (auto-ingests samples if KB is empty)"
 	@echo "  make stop            Stop all services"
+	@echo "  make reset           Wipe all docs and reload sample documents"
 	@echo "  make ingest-samples  Ingest sample documents into the knowledge base"
 	@echo "  make delete-all      Wipe all documents from the knowledge base"
-	@echo "  make test            Run tests for project 01 (RAG pipeline)"
+	@echo "  make test            Run tests for all projects"
 	@echo "  make clean           Remove virtual environments and caches"
 	@echo ""
 	@echo "Quick start:"
 	@echo "  1. brew services start ollama  # Start Ollama (if not running)"
 	@echo "  2. make setup                  # One-time dependency install"
-	@echo "  3. make dev                    # Start RAG API"
-	@echo "  4. make ingest-samples         # Load sample documents"
+	@echo "  3. make dev                    # Start RAG API + auto-ingest samples"
+	@echo ""
+	@echo "After a test session with added docs:"
+	@echo "  make reset                     # Wipe and reload just the sample docs"
 
 setup:
 	@echo "Installing dependencies for Project 01 (RAG) and Project 02 (MCP Server)..."
 	cd 01-local-rag-pipeline && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 	cd 02-mcp-server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-	@echo "✓ Setup complete. Run 'make dev' to start services."
+	@echo "✓ Setup complete. Run 'make dev' to start the RAG API."
 
 dev:
 	@echo "Starting RAG API (Project 01)..."
 	@echo "  RAG API: http://localhost:8000"
 	@echo ""
 	@echo "Note: The MCP server (Project 02) is started automatically by Claude Desktop."
-	@echo "      Configure it in Claude Desktop settings, then restart Claude Desktop."
 	@echo ""
 	@echo "To stop, press Ctrl+C or run 'make stop' in another terminal"
-	cd 01-local-rag-pipeline && .venv/bin/uvicorn app.main:app --reload --port 8000
+	cd 01-local-rag-pipeline && .venv/bin/uvicorn app.main:app --reload --port 8000 &
+	@sleep 3
+	@DOC_COUNT=$$(curl -s http://localhost:8000/documents | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null); \
+	if [ "$$DOC_COUNT" = "0" ]; then \
+		echo ""; \
+		echo "Knowledge base is empty — ingesting sample documents..."; \
+		$(MAKE) ingest-samples; \
+	else \
+		echo ""; \
+		echo "Knowledge base already has $$DOC_COUNT document(s) — skipping sample ingest."; \
+		echo "Run 'make reset' to wipe and reload sample docs."; \
+	fi
+	@wait
 
 stop:
 	@echo "Stopping RAG API..."
 	pkill -f "uvicorn app.main:app" || true
 	@echo "✓ Stopped"
 
-ingest-samples:
-	@echo "Ingesting sample documents into the knowledge base..."
+reset:
+	@echo "Resetting knowledge base to sample documents only..."
 	@if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then \
 		echo "✗ RAG API is not running. Start it first with: make dev"; \
 		exit 1; \
 	fi
+	@$(MAKE) delete-all
+	@$(MAKE) ingest-samples
+	@echo "✓ Knowledge base reset to sample documents."
+
+ingest-samples:
+	@if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "✗ RAG API is not running. Start it first with: make dev"; \
+		exit 1; \
+	fi
+	@echo "Ingesting sample documents..."
 	@for f in sample-docs/*.txt; do \
-		echo "  Ingesting $$f..."; \
 		curl -s -X POST http://localhost:8000/ingest -F "files=@$$f" | python3 -c "import sys,json; d=json.load(sys.stdin); print('  ✓', d['documents'][0]['filename'])"; \
 	done
-	@echo "✓ Sample documents ingested. Run 'make dev' and query via Claude Desktop."
+	@echo "✓ Done."
 
 delete-all:
-	@echo "Deleting all documents from the knowledge base..."
 	@if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then \
 		echo "✗ RAG API is not running. Start it first with: make dev"; \
 		exit 1; \
 	fi
-	curl -s -X DELETE http://localhost:8000/documents
+	@curl -s -X DELETE http://localhost:8000/documents > /dev/null
 	@echo "✓ All documents deleted."
 
 test:
