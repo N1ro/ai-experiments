@@ -15,3 +15,4 @@ build/
 *.log
 node_modules/
 .claude/claude.local.md
+chroma_db/

@@ -1,16 +1,17 @@
-.PHONY: help setup dev stop clean test ingest-samples delete-all reset
+.PHONY: help setup dev stop clean test ingest-samples delete-all reset setup-03
 
 help:
 	@echo "AI Experiments — Local Development Setup"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make setup           Install dependencies for projects 01-02"
+	@echo "  make setup           Install dependencies for projects 01-02 (local/offline)"
 	@echo "  make dev             Start RAG API (auto-ingests samples if KB is empty)"
 	@echo "  make stop            Stop all services"
 	@echo "  make reset           Wipe all docs and reload sample documents"
 	@echo "  make ingest-samples  Ingest sample documents into the knowledge base"
 	@echo "  make delete-all      Wipe all documents from the knowledge base"
 	@echo "  make test            Run tests for all projects"
+	@echo "  make setup-03        Install dependencies for project 03 (needs ANTHROPIC_API_KEY)"
 	@echo "  make clean           Remove virtual environments and caches"
 	@echo ""
 	@echo "Quick start:"
@@ -26,6 +27,12 @@ setup:
 	cd 01-local-rag-pipeline && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 	cd 02-mcp-server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 	@echo "✓ Setup complete. Run 'make dev' to start the RAG API."
+
+setup-03:
+	@echo "Installing dependencies for Project 03 (Agentic QA)..."
+	cd 03-agentic-qa && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+	@echo "✓ Project 03 setup complete."
+	@echo "  Set ANTHROPIC_API_KEY and run: 03-agentic-qa/.venv/bin/python main.py <github-url>"
 
 dev:
 	@echo "Starting RAG API (Project 01)..."
@@ -88,6 +95,9 @@ test:
 	@echo ""
 	@echo "Running tests for Project 02 (MCP server)..."
 	cd 02-mcp-server && .venv/bin/pytest tests/ -v
+	@echo ""
+	@echo "Running tests for Project 03 (Agentic QA)..."
+	cd 03-agentic-qa && .venv/bin/pytest tests/ -v
 
 clean:
 	@echo "Cleaning up virtual environments and caches..."
