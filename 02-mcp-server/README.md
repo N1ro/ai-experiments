@@ -43,18 +43,16 @@ This MCP server wraps the RAG API (Project 1) and exposes it as Claude-callable 
 From the repository root:
 
 ```bash
-# One-time setup (installs dependencies for all projects)
+# One-time setup (installs dependencies for projects 01 and 02)
 make setup
 
-# Start both RAG API and MCP server
+# Start the RAG API (required dependency for this MCP server)
 make dev
 ```
 
-This starts:
-1. RAG API on `http://localhost:8000`
-2. MCP server ready for Claude Desktop
+This starts the RAG API on `http://localhost:8000`.
 
-Then proceed to step 2 below.
+> **Note:** The MCP server does **not** need to be started manually. Claude Desktop launches it automatically as a subprocess when you send a message. You only need to configure the path (see below) and restart Claude Desktop once.
 
 ### Option B: Manual Setup
 
@@ -88,13 +86,9 @@ uvicorn app.main:app --reload
 # API will be running on http://localhost:8000
 ```
 
-#### 3. Start the MCP server in another terminal
+#### 3. MCP server (no manual start needed)
 
-```bash
-cd 02-mcp-server
-source .venv/bin/activate
-python src/rag_mcp_server.py
-```
+The MCP server is launched automatically by Claude Desktop. You don't run it yourself — just configure the path below and restart Claude Desktop.
 
 ### Configure Claude Desktop
 
@@ -259,18 +253,19 @@ In another terminal, test the RAG API:
 ```bash
 # Check health
 curl http://localhost:8000/health
+# Expected: {"status":"ok"}
 
-# Ingest a test document
+# Create a test document, then ingest it
+echo "Python is a high-level language used for data science and AI." > /tmp/test.txt
 curl -X POST "http://localhost:8000/ingest" \
-  -F "files=@/tmp/test.txt" << 'EOF'
-Test document about Python programming.
-Python is used for data science, web development, and AI.
-EOF
+  -F "files=@/tmp/test.txt"
+# Expected: {"documents":[{"filename":"test.txt","doc_id":"...","status":"success"}]}
 
 # Query it
 curl -X POST "http://localhost:8000/query" \
   -H "Content-Type: application/json" \
   -d '{"query": "What is Python?", "top_k": 1}'
+# Expected: {"answer":"Python is a high-level...","sources":[...]}
 ```
 
 ### Manual Testing (if not using make dev)
@@ -280,22 +275,15 @@ curl -X POST "http://localhost:8000/query" \
    cd 01-local-rag-pipeline
    source .venv/bin/activate
    uvicorn app.main:app --reload
-   # Verify: curl http://localhost:8000/health
    ```
 
-2. **Terminal 2: Test RAG API**
+2. **Terminal 2: Verify RAG API is up**
    ```bash
    curl http://localhost:8000/health
    # Should return: {"status":"ok"}
    ```
 
-3. **Terminal 3: Start MCP server**
-   ```bash
-   cd 02-mcp-server
-   source .venv/bin/activate
-   python src/rag_mcp_server.py
-   # Should see server ready on stdio
-   ```
+> The MCP server is started by Claude Desktop automatically — you do not run it in a terminal.
 
 ### Testing in Claude Desktop
 
@@ -327,13 +315,14 @@ Once the MCP server is running and configured:
 
 ### Automated Testing (Unit Tests)
 
-If test files exist:
+No services needed — all HTTP calls are mocked:
 ```bash
+cd 02-mcp-server
 source .venv/bin/activate
 pytest tests/ -v
 ```
 
-Note: Test suite may be sparse initially; manual testing verifies integration.
+Covers all four tool handlers (14 tests): `query_knowledge_base`, `ingest_document`, `list_documents`, `delete_document` — including validation and error cases.
 
 ## Troubleshooting
 

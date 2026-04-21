@@ -219,7 +219,7 @@ async def list_tools() -> list[Tool]:
     ]
 
 async def main():
-    async with stdio_server(server) as (read_stream, write_stream):
+    async with stdio_server() as (read_stream, write_stream):
         print("RAG MCP Server running on stdio", file=sys.stderr)
         await server.run(read_stream, write_stream, server.create_initialization_options())
 

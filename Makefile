@@ -22,24 +22,19 @@ setup:
 	@echo "✓ Setup complete. Run 'make dev' to start services."
 
 dev:
-	@echo "Starting services (Project 01 RAG API + Project 02 MCP Server)..."
+	@echo "Starting RAG API (Project 01)..."
 	@echo "  RAG API: http://localhost:8000"
-	@echo "  MCP Server: ready for Claude Desktop"
+	@echo ""
+	@echo "Note: The MCP server (Project 02) is started automatically by Claude Desktop."
+	@echo "      Configure it in Claude Desktop settings, then restart Claude Desktop."
 	@echo ""
 	@echo "To stop, press Ctrl+C or run 'make stop' in another terminal"
-	@echo ""
-	cd 01-local-rag-pipeline && .venv/bin/uvicorn app.main:app --reload --port 8000 &
-	RAG_PID=$$!; \
-	sleep 3; \
-	cd 02-mcp-server && .venv/bin/python src/rag_mcp_server.py &
-	MCP_PID=$$!; \
-	wait
+	cd 01-local-rag-pipeline && .venv/bin/uvicorn app.main:app --reload --port 8000
 
 stop:
-	@echo "Stopping services..."
+	@echo "Stopping RAG API..."
 	pkill -f "uvicorn app.main:app" || true
-	pkill -f "python.*rag_mcp_server.py" || true
-	@echo "✓ Services stopped"
+	@echo "✓ Stopped"
 
 test:
 	@echo "Running tests for Project 01 (RAG pipeline)..."
