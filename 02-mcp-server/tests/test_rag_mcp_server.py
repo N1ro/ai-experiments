@@ -15,6 +15,7 @@ from rag_mcp_server import (
     ingest_document,
     list_documents,
     delete_document,
+    delete_all_documents,
 )
 
 
@@ -242,6 +243,41 @@ async def test_delete_success():
 
     assert result.isError is False
     assert "abc-123" in result.content[0].text
+
+
+# ============= delete_all_documents =============
+
+@pytest.mark.asyncio
+async def test_delete_all_success():
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+
+    with patch("rag_mcp_server.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.delete = AsyncMock(return_value=mock_response)
+        mock_client_cls.return_value = mock_client
+
+        result = await delete_all_documents({})
+
+    assert result.isError is False
+    assert "All documents deleted" in result.content[0].text
+
+
+@pytest.mark.asyncio
+async def test_delete_all_api_error():
+    with patch("rag_mcp_server.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.delete = AsyncMock(side_effect=Exception("Server error"))
+        mock_client_cls.return_value = mock_client
+
+        result = await delete_all_documents({})
+
+    assert result.isError is True
+    assert "Error deleting all documents" in result.content[0].text
 
 
 @pytest.mark.asyncio

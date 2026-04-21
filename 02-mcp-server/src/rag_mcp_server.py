@@ -24,6 +24,8 @@ async def handle_tool_call(name: str, arguments: dict) -> CallToolResult:
         return await list_documents(arguments)
     elif name == "delete_document":
         return await delete_document(arguments)
+    elif name == "delete_all_documents":
+        return await delete_all_documents(arguments)
     else:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Unknown tool: {name}")],
@@ -171,6 +173,22 @@ async def delete_document(arguments: dict) -> CallToolResult:
             isError=True,
         )
 
+async def delete_all_documents(arguments: dict) -> CallToolResult:
+    """Delete all documents from the knowledge base."""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(f"{RAG_API_URL}/documents", timeout=10.0)
+            response.raise_for_status()
+            return CallToolResult(
+                content=[TextContent(type="text", text="All documents deleted from the knowledge base.")],
+                isError=False,
+            )
+    except Exception as e:
+        return CallToolResult(
+            content=[TextContent(type="text", text=f"Error deleting all documents: {str(e)}")],
+            isError=True,
+        )
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List available tools."""
@@ -207,7 +225,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="delete_document",
-            description="Delete a document from the knowledge base",
+            description="Delete a single document from the knowledge base by ID",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -215,6 +233,11 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["doc_id"],
             },
+        ),
+        Tool(
+            name="delete_all_documents",
+            description="Delete all documents from the knowledge base. Use this to wipe the knowledge base clean.",
+            inputSchema={"type": "object", "properties": {}},
         ),
     ]
 

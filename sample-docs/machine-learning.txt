@@ -1,0 +1,10 @@
+Machine Learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed.
+
+Key techniques:
+- Supervised learning: training on labelled data (classification, regression)
+- Unsupervised learning: finding patterns in unlabelled data (clustering, dimensionality reduction)
+- Reinforcement learning: learning through rewards and penalties
+
+Common algorithms: linear regression, decision trees, random forests, support vector machines, neural networks.
+
+Applications: recommendation systems, image recognition, fraud detection, natural language processing.

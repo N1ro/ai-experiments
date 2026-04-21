@@ -1,0 +1,14 @@
+Retrieval-Augmented Generation (RAG) combines a retrieval system with a language model to answer questions using your own documents.
+
+How it works:
+1. Ingest: documents are split into chunks and converted to vector embeddings
+2. Store: embeddings are saved in a vector database (e.g. ChromaDB)
+3. Query: your question is also embedded, then similar chunks are retrieved
+4. Generate: an LLM reads the retrieved chunks and generates an answer
+
+Why RAG over fine-tuning:
+- No retraining required — just add documents
+- Answers are grounded in your actual data
+- Easy to update the knowledge base
+
+This project uses nomic-embed-text for embeddings, ChromaDB for storage, and Qwen3:14b for generation — all running locally via Ollama.

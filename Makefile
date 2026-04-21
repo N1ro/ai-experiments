@@ -1,19 +1,22 @@
-.PHONY: help setup dev stop clean test
+.PHONY: help setup dev stop clean test ingest-samples delete-all
 
 help:
 	@echo "AI Experiments — Local Development Setup"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make setup          Install dependencies for projects 01-02"
-	@echo "  make dev            Start RAG API + MCP server (requires Ollama running)"
-	@echo "  make stop           Stop all services"
-	@echo "  make test           Run tests for project 01 (RAG pipeline)"
-	@echo "  make clean          Remove virtual environments and caches"
+	@echo "  make setup           Install dependencies for projects 01-02"
+	@echo "  make dev             Start RAG API (requires Ollama running)"
+	@echo "  make stop            Stop all services"
+	@echo "  make ingest-samples  Ingest sample documents into the knowledge base"
+	@echo "  make delete-all      Wipe all documents from the knowledge base"
+	@echo "  make test            Run tests for project 01 (RAG pipeline)"
+	@echo "  make clean           Remove virtual environments and caches"
 	@echo ""
 	@echo "Quick start:"
 	@echo "  1. brew services start ollama  # Start Ollama (if not running)"
-	@echo "  2. make setup                  # One-time setup"
-	@echo "  3. make dev                    # Start both services"
+	@echo "  2. make setup                  # One-time dependency install"
+	@echo "  3. make dev                    # Start RAG API"
+	@echo "  4. make ingest-samples         # Load sample documents"
 
 setup:
 	@echo "Installing dependencies for Project 01 (RAG) and Project 02 (MCP Server)..."
@@ -36,11 +39,33 @@ stop:
 	pkill -f "uvicorn app.main:app" || true
 	@echo "✓ Stopped"
 
+ingest-samples:
+	@echo "Ingesting sample documents into the knowledge base..."
+	@if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "✗ RAG API is not running. Start it first with: make dev"; \
+		exit 1; \
+	fi
+	@for f in sample-docs/*.txt; do \
+		echo "  Ingesting $$f..."; \
+		curl -s -X POST http://localhost:8000/ingest -F "files=@$$f" | python3 -c "import sys,json; d=json.load(sys.stdin); print('  ✓', d['documents'][0]['filename'])"; \
+	done
+	@echo "✓ Sample documents ingested. Run 'make dev' and query via Claude Desktop."
+
+delete-all:
+	@echo "Deleting all documents from the knowledge base..."
+	@if ! curl -s http://localhost:8000/health > /dev/null 2>&1; then \
+		echo "✗ RAG API is not running. Start it first with: make dev"; \
+		exit 1; \
+	fi
+	curl -s -X DELETE http://localhost:8000/documents
+	@echo "✓ All documents deleted."
+
 test:
 	@echo "Running tests for Project 01 (RAG pipeline)..."
 	cd 01-local-rag-pipeline && .venv/bin/pytest tests/ -v
 	@echo ""
-	@echo "Note: Project 02 tests require full integration; Project 03 is not yet complete."
+	@echo "Running tests for Project 02 (MCP server)..."
+	cd 02-mcp-server && .venv/bin/pytest tests/ -v
 
 clean:
 	@echo "Cleaning up virtual environments and caches..."
