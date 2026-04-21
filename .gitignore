@@ -14,3 +14,4 @@ build/
 .pytest_cache/
 *.log
 node_modules/
+.claude/claude.local.md

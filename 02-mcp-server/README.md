@@ -19,10 +19,12 @@ Answer: "According to doc_revenue_q3.txt, revenue was..."
 ## Understanding MCP
 
 **MCP (Model Context Protocol)** is a simple standard that lets Claude use tools in a structured way. Think of it like:
+
 - Traditional APIs let your code call services
 - MCP lets LLMs call tools securely
 
 When you run an MCP server:
+
 1. Claude Desktop connects to your MCP server
 2. Your MCP server declares what tools it has
 3. Claude can request to use those tools
@@ -36,48 +38,79 @@ This MCP server wraps the RAG API (Project 1) and exposes it as Claude-callable 
 
 ## Setup
 
-### 1. Install dependencies
+### Option A: Automated Setup (Recommended)
+
+From the repository root:
+
+```bash
+# One-time setup (installs dependencies for all projects)
+make setup
+
+# Start both RAG API and MCP server
+make dev
+```
+
+This starts:
+1. RAG API on `http://localhost:8000`
+2. MCP server ready for Claude Desktop
+
+Then proceed to step 2 below.
+
+### Option B: Manual Setup
+
+#### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure Claude Desktop
-
-Add to `~/.config/claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "rag-local": {
-      "command": "python",
-      "args": ["<path-to>/src/rag_mcp_server.py"]
-    }
-  }
-}
-```
-
-Replace `<path-to>` with the full path to this directory.
-
-### 3. Ensure RAG API is running
+#### 2. Ensure RAG API is running
 
 The RAG API (Project 1) must be running on `http://localhost:8000`:
 
 ```bash
 cd ../01-local-rag-pipeline
+pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-### 4. Restart Claude Desktop
+#### 3. Start the MCP server
 
-Restart Claude Desktop to load the new MCP server.
+In another terminal:
+
+```bash
+python src/rag_mcp_server.py
+```
+
+### Configure Claude Desktop
+
+Add to `~/.config/claude/claude_desktop_config.json`:
+
+```json
+{
+    "mcpServers": {
+        "rag-local": {
+            "command": "python",
+            "args": ["/full/path/to/02-mcp-server/src/rag_mcp_server.py"]
+        }
+    }
+}
+```
+
+Replace `/full/path/to` with the absolute path to the `02-mcp-server` directory.
+
+### Restart Claude Desktop
+
+Close and reopen Claude Desktop to load the new MCP server. Check the developer tools to verify the connection.
 
 ## Tools Exposed
 
 ### query_knowledge_base
+
 Search your knowledge base with natural language.
 
 **What it does:**
+
 - Takes your question as natural language
 - Converts it to embeddings (via nomic-embed-text)
 - Finds similar document chunks using cosine similarity
@@ -88,9 +121,11 @@ Search your knowledge base with natural language.
 → Searches your documents → Returns relevant sections + synthesized answer
 
 ### ingest_document
+
 Add new documents to your knowledge base.
 
 **What it does:**
+
 - Takes document content (file or text)
 - Splits into 500-character chunks with 50-char overlap
 - Converts each chunk to embeddings
@@ -101,17 +136,21 @@ Add new documents to your knowledge base.
 → Document ingested, chunked, embedded, indexed
 
 ### list_documents
+
 View all indexed documents.
 
 **What it does:**
+
 - Returns all documents currently in your knowledge base
 - Shows document title, ID, and chunk count
 - Useful for managing your document collection
 
 ### delete_document
+
 Remove a document and its embeddings.
 
 **What it does:**
+
 - Takes a document ID
 - Deletes all its chunks from ChromaDB
 - Removes metadata from the system
@@ -123,23 +162,26 @@ Remove a document and its embeddings.
 You can now have conversations like:
 
 **Query example:**
+
 ```
 You: "Search my knowledge base for machine learning techniques"
 Claude: [Uses query_knowledge_base tool]
-Claude: "Based on your indexed documents, machine learning 
-involves supervised learning, unsupervised learning, and 
+Claude: "Based on your indexed documents, machine learning
+involves supervised learning, unsupervised learning, and
 reinforcement learning. Your doc_ml_basics.txt covers..."
 ```
 
 **Ingest example:**
+
 ```
 You: "Add this document to my knowledge base: <content or file>"
 Claude: [Uses ingest_document tool]
-Claude: "Document ingested successfully (ID: uuid-xxx). 
+Claude: "Document ingested successfully (ID: uuid-xxx).
 It was split into 12 chunks and is now searchable."
 ```
 
 **Management example:**
+
 ```
 You: "What documents do I have indexed?"
 Claude: [Uses list_documents tool]
@@ -152,12 +194,11 @@ Claude: "You have 5 documents indexed:
 ### Why This Matters
 
 This demonstrates **integration across the AI stack**:
+
 - ✅ Local LLM integration (Claude Desktop ↔ MCP)
 - ✅ REST API integration (MCP Server ↔ RAG API)
 - ✅ Vector database integration (RAG ↔ ChromaDB)
 - ✅ Embedding model integration (ChromaDB ↔ Ollama)
-
-For interviews: This shows you can build systems where AI models communicate with your infrastructure, a core pattern in production AI applications.
 
 ## Testing
 
@@ -177,34 +218,85 @@ Make sure the RAG API is running (`uvicorn app.main:app --reload` in Project 1) 
 ## Troubleshooting
 
 ### "Connection refused" to RAG API
+
 **Problem:** RAG API not running on localhost:8000
+
+If using `make dev`:
 ```bash
-# Start RAG API in another terminal
+# Services should start automatically. If they don't, check Ollama is running
+brew services start ollama
+# Then try again
+make dev
+```
+
+If manual setup:
+```bash
 cd ../01-local-rag-pipeline
-uvicorn app.main:app --reload
+.venv/bin/uvicorn app.main:app --reload
 ```
 
 ### "MCP server not found" in Claude Desktop
+
 **Problem:** Path in config is incorrect or server not running
+
 ```bash
-# Verify path is correct (no <path-to> placeholders)
+# Verify the config has the FULL absolute path
 cat ~/.config/claude/claude_desktop_config.json
+
+# Get the full path to this directory
+pwd  # in 02-mcp-server directory
 
 # Test server directly
 python src/rag_mcp_server.py
 ```
 
+Paths must be absolute, not relative. Example:
+```json
+{
+    "mcpServers": {
+        "rag-local": {
+            "command": "python",
+            "args": ["/Users/niro/projects/ai-experiments/02-mcp-server/src/rag_mcp_server.py"]
+        }
+    }
+}
+```
+
 ### Claude can't find the tools
+
 **Problem:** Claude Desktop needs restart after config change
+
 - Close Claude Desktop completely
 - Wait 5 seconds
 - Reopen Claude Desktop
-- Check that the server connects in the dev tools
+- Check that the server connects in dev tools (⚙️ → Developer Console)
+- Look for "rag-local" server status
 
 ### Tool executions are slow
+
 **Normal:** First query loads Ollama models (~5-10 sec). Subsequent queries are 2-3 seconds.
+
 - First RAG query: ~8 seconds (model loading)
 - Subsequent queries: ~2-3 seconds each
+
+This is expected—Ollama caches models in memory after first use.
+
+### Ollama not running
+
+**Problem:** Models can't be loaded
+
+```bash
+# Check if Ollama is running
+curl http://localhost:11434/api/tags
+
+# If not, start it
+brew services start ollama
+
+# Verify models are installed
+ollama list
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+```
 
 ## Architecture
 
@@ -225,15 +317,15 @@ ChromaDB + Ollama (local, no cloud)
 **Flow Example:**
 
 User asks Claude: "Search for machine learning content"
-    ↓
+↓
 Claude calls `query_knowledge_base` via MCP
-    ↓
+↓
 rag_mcp_server.py makes HTTP request to RAG API
-    ↓
+↓
 RAG API: embeddings → similarity search → LLM generation
-    ↓
+↓
 Results returned to Claude
-    ↓
+↓
 Claude presents answer in conversation
 
 ## Licence
