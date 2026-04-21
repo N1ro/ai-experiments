@@ -11,9 +11,11 @@ from app.rag import RAGEngine
 async def rag():
     """Create a RAG engine with temporary ChromaDB for testing."""
     import uuid
-    # Use unique directory for each test to avoid cross-contamination
-    tmpdir = tempfile.mkdtemp(prefix=f"chroma_test_{uuid.uuid4().hex}_")
+    unique_id = uuid.uuid4().hex
+    # Unique dir AND unique collection name — prevents ChromaDB in-memory sharing
+    tmpdir = tempfile.mkdtemp(prefix=f"chroma_test_{unique_id}_")
     os.environ["CHROMA_DB_PATH"] = tmpdir
+    os.environ["CHROMA_COLLECTION_NAME"] = f"rag_test_{unique_id}"
     engine = RAGEngine()
     await engine.init()
     yield engine
@@ -297,10 +299,10 @@ async def test_similarity_threshold_partial_filter(rag):
     await rag.ingest("ml.txt", "Machine Learning techniques.")
     await rag.ingest("biology.txt", "Photosynthesis in plants.")
 
-    # Query should match Python strongly, ML weakly, biology poorly
-    answer, sources = await rag.query("python", top_k=3, similarity_threshold=0.5)
+    # Query should match Python strongly, but not biology (threshold set high enough to filter it)
+    answer, sources = await rag.query("python", top_k=3, similarity_threshold=0.65)
 
-    # Should include python and maybe ml, but not biology
+    # python.txt should always match strongly; biology.txt should be filtered
     assert any(s["title"] == "python.txt" for s in sources)
     assert not any(s["title"] == "biology.txt" for s in sources)
 
