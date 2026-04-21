@@ -202,6 +202,8 @@ This demonstrates **integration across the AI stack**:
 
 ## Testing
 
+### Automated Testing
+
 ```bash
 # Run all tests
 python -m pytest tests/ -v
@@ -213,7 +215,41 @@ python -m pytest tests/test_rag_mcp_server.py -v
 python -m pytest tests/ --cov=src
 ```
 
-Make sure the RAG API is running (`uvicorn app.main:app --reload` in Project 1) before running tests.
+### Manual Testing
+
+1. **Start both services** (from repo root):
+   ```bash
+   make dev
+   ```
+   Services running:
+   - RAG API: http://localhost:8000/health
+   - MCP server: ready for Claude Desktop
+
+2. **Test RAG API directly**:
+   ```bash
+   # Ingest a test document
+   curl -X POST "http://localhost:8000/ingest" \
+     -F "files=@document.txt"
+   
+   # Query it
+   curl -X POST "http://localhost:8000/query" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "Your question", "top_k": 3}'
+   
+   # Check health
+   curl "http://localhost:8000/health"
+   ```
+
+3. **Test MCP server tools** (via Claude Desktop):
+   - Use `query_knowledge_base` to search your documents
+   - Use `ingest_document` to add new content
+   - Use `list_documents` to see indexed documents
+   - Use `delete_document` to remove specific documents
+
+**Requirements before testing:**
+- Ollama running with required models (`ollama list` should show `qwen3:14b` and `nomic-embed-text`)
+- RAG API must be accessible on `localhost:8000`
+- Python dependencies installed via `make setup`
 
 ## Troubleshooting
 
