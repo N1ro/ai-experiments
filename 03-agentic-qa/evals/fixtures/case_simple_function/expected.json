@@ -1,0 +1,6 @@
+{
+  "gaps": [
+    ["src/calc.py", "multiply"],
+    ["src/calc.py", "divide"]
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "gaps": [
+    ["src/auth.py", "logout"],
+    ["src/auth.py", "reset_password"]
+  ]
+}

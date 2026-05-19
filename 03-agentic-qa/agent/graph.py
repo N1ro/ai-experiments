@@ -1,13 +1,18 @@
-"""Agentic QA workflow using Anthropic tool use."""
+"""Agentic QA workflow using LiteLLM for local-first models."""
 
-import anthropic
+import litellm
 import json
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import TypedDict
+from dotenv import load_dotenv
+from tree_sitter_languages import get_language, get_parser
+from agent.auditor import TreeSitterAuditor
 
+# Load environment variables
+load_dotenv()
 
 class AgentState(TypedDict):
     repo_url: str
@@ -16,22 +21,29 @@ class AgentState(TypedDict):
     test_file: str
     pr_created: bool
     messages: list
+    model: str
 
 
-def initialize_state(repo_url: str) -> AgentState:
+def initialize_state(repo_url: str, model: str = None) -> AgentState:
+    if not model:
+        model = os.getenv("LITELLM_MODEL", "ollama/qwen2.5-coder")
+    
     return {
         "repo_url": repo_url,
-        "repo_path": "",
+        "repo_path": repo_url if os.path.isdir(repo_url) else "",
         "functions": [],
         "test_file": "",
         "pr_created": False,
+        "model": model,
         "messages": [
             {
                 "role": "user",
                 "content": (
                     f"Analyze {repo_url} and improve its test coverage. "
-                    "Clone the repo, find Python files, analyze functions, "
-                    "write pytest tests for untested functions, then create a PR."
+                    "If it is a local path, use it directly. If it is a URL, clone it first. "
+                    "Use get_local_diff if it is a local repo to see recent changes. "
+                    "Use find_testing_gaps to find missing tests using Tree-sitter, "
+                    "then write pytest tests for those gaps."
                 ),
             }
         ],
@@ -67,23 +79,12 @@ def list_python_files(repo_path: str) -> list[str]:
     return files[:20]
 
 
-def analyze_functions(file_path: str) -> list[dict]:
-    """Extract function definitions from a Python file."""
+def find_testing_gaps(repo_path: str) -> list[dict]:
+    """Use Tree-sitter to find functions in source that are never called in tests."""
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        functions = []
-        for i, line in enumerate(content.split("\n"), start=1):
-            stripped = line.strip()
-            if stripped.startswith("def ") or stripped.startswith("async def "):
-                name = stripped.split("def ")[1].split("(")[0].strip()
-                functions.append({
-                    "name": name,
-                    "file": file_path,
-                    "line": i,
-                    "signature": stripped,
-                })
-        return functions
+        auditor = TreeSitterAuditor()
+        gaps = auditor.find_gaps(repo_path)
+        return gaps
     except Exception as e:
         return [{"error": str(e)}]
 
@@ -125,69 +126,113 @@ def create_pull_request(repo_path: str, title: str, body: str) -> str:
         return f"Error: {str(e)}"
 
 
+def get_local_diff(repo_path: str) -> str:
+    """Get the git diff of uncommitted changes in a local repository."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return result.stdout if result.returncode == 0 else f"Error: {result.stderr.strip()}"
+    except Exception as e:
+        return f"Error getting diff: {str(e)}"
+
+
 TOOLS = [
     {
-        "name": "clone_repo",
-        "description": "Clone a GitHub repository to a local temp directory for analysis",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "repo_url": {"type": "string", "description": "Full GitHub repository URL"}
-            },
-            "required": ["repo_url"],
-        },
-    },
-    {
-        "name": "list_python_files",
-        "description": "List all Python (.py) source files in the cloned repository (up to 20)",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "repo_path": {"type": "string", "description": "Local path to the cloned repository"}
-            },
-            "required": ["repo_path"],
-        },
-    },
-    {
-        "name": "analyze_functions",
-        "description": "Extract all function definitions (name, file, line number, signature) from a Python file",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "file_path": {"type": "string", "description": "Absolute path to a Python source file"}
-            },
-            "required": ["file_path"],
-        },
-    },
-    {
-        "name": "write_test",
-        "description": "Write a pytest test function for a given Python function into the tests/ directory",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "function": {
-                    "type": "object",
-                    "description": "Function metadata dict with keys: name, file, line, signature",
+        "type": "function",
+        "function": {
+            "name": "clone_repo",
+            "description": "Clone a GitHub repository to a local temp directory for analysis",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo_url": {"type": "string", "description": "Full GitHub repository URL"}
                 },
-                "test_code": {
-                    "type": "string",
-                    "description": "Complete, runnable pytest test code (including imports if needed)",
-                },
+                "required": ["repo_url"],
             },
-            "required": ["function", "test_code"],
         },
     },
     {
-        "name": "create_pull_request",
-        "description": "Stage, commit, and open a GitHub pull request with all test additions",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "repo_path": {"type": "string", "description": "Local path to the cloned repository"},
-                "title": {"type": "string", "description": "PR title"},
-                "body": {"type": "string", "description": "PR description summarising what was done"},
+        "type": "function",
+        "function": {
+            "name": "list_python_files",
+            "description": "List all Python (.py) source files in the cloned repository (up to 20)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Local path to the cloned repository"}
+                },
+                "required": ["repo_path"],
             },
-            "required": ["repo_path", "title", "body"],
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_testing_gaps",
+            "description": "Find all functions and methods in the repository that lack corresponding test calls using Tree-sitter AST analysis.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Local path to the cloned repository"}
+                },
+                "required": ["repo_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_test",
+            "description": "Write a pytest test function for a given Python function into the tests/ directory",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "function": {
+                        "type": "object",
+                        "description": "Function metadata dict with keys: name, file, line, signature",
+                    },
+                    "test_code": {
+                        "type": "string",
+                        "description": "Complete, runnable pytest test code (including imports if needed)",
+                    },
+                },
+                "required": ["function", "test_code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_pull_request",
+            "description": "Stage, commit, and open a GitHub pull request with all test additions",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Local path to the cloned repository"},
+                    "title": {"type": "string", "description": "PR title"},
+                    "body": {"type": "string", "description": "PR description summarising what was done"},
+                },
+                "required": ["repo_path", "title", "body"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_local_diff",
+            "description": "Get the git diff of uncommitted changes in the local repository to focus the audit on recent work.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Local path to the repository"}
+                },
+                "required": ["repo_path"],
+            },
         },
     },
 ]
@@ -204,10 +249,10 @@ def _execute_tool(name: str, tool_input: dict, state: AgentState) -> tuple[str, 
         files = list_python_files(tool_input["repo_path"])
         return json.dumps(files), state
 
-    elif name == "analyze_functions":
-        functions = analyze_functions(tool_input["file_path"])
-        state["functions"].extend(f for f in functions if "error" not in f)
-        return json.dumps(functions), state
+    elif name == "find_testing_gaps":
+        gaps = find_testing_gaps(tool_input["repo_path"])
+        state["functions"].extend(gaps)
+        return json.dumps(gaps), state
 
     elif name == "write_test":
         result = write_test(tool_input["function"], tool_input["test_code"])
@@ -225,47 +270,45 @@ def _execute_tool(name: str, tool_input: dict, state: AgentState) -> tuple[str, 
             state["pr_created"] = True
         return result, state
 
+    elif name == "get_local_diff":
+        return get_local_diff(tool_input["repo_path"]), state
+
     return f"Unknown tool: {name}", state
 
 
 def run_agent(initial_state: AgentState) -> AgentState:
-    """Run the agentic QA loop (max 10 iterations)."""
-    client = anthropic.Anthropic()
+    """Run the agentic QA loop using LiteLLM (max 10 iterations)."""
     state = initial_state
     messages = list(state["messages"])
+    model = state["model"]
 
     for _ in range(10):
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=4096,
-            system=(
-                "You are an expert QA engineer. Your job is to improve test coverage for Python repositories. "
-                "Follow this order: clone_repo → list_python_files → analyze_functions (for each file) → "
-                "write_test (for each untested function) → create_pull_request. "
-                "Write complete, runnable pytest test functions including any necessary imports."
-            ),
-            tools=TOOLS,
+        response = litellm.completion(
+            model=model,
             messages=messages,
+            tools=TOOLS,
+            tool_choice="auto",
         )
 
-        messages.append({"role": "assistant", "content": response.content})
+        assistant_message = response.choices[0].message
+        messages.append(assistant_message)
 
-        if response.stop_reason == "end_turn":
+        if not assistant_message.tool_calls:
             break
 
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                print(f"[Tool: {block.name}]", flush=True)
-                result_str, state = _execute_tool(block.name, block.input, state)
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": result_str,
-                })
-
-        if tool_results:
-            messages.append({"role": "user", "content": tool_results})
+        for tool_call in assistant_message.tool_calls:
+            name = tool_call.function.name
+            args = json.loads(tool_call.function.arguments)
+            print(f"[Tool: {name}]", flush=True)
+            
+            result_str, state = _execute_tool(name, args, state)
+            
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "name": name,
+                "content": result_str,
+            })
 
     state["messages"] = messages
     return state

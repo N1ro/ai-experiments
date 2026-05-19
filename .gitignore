@@ -12,6 +12,7 @@ venv/
 dist/
 build/
 .pytest_cache/
+03-agentic-qa/game_plan.md
 *.log
 node_modules/
 .claude/claude.local.md

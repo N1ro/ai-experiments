@@ -1,2 +1,6 @@
-anthropic>=0.50.0
-pytest>=8.0
+litellm
+tree-sitter
+tree-sitter-languages
+python-dotenv
+pytest
+coverage

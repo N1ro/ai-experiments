@@ -7,16 +7,20 @@ from agent.graph import initialize_state, run_agent
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python main.py <github-repo-url>")
-        print("Example: python main.py https://github.com/user/repo")
+        print("Usage: python main.py <github-repo-url> [model-name]")
+        print("Example: python main.py https://github.com/user/repo ollama/qwen2.5-coder")
         sys.exit(1)
 
     repo_url = sys.argv[1]
+    model = sys.argv[2] if len(sys.argv) > 2 else None
+    
     print(f"Starting QA agent for: {repo_url}")
+    if model:
+        print(f"Using model: {model}")
     print("-" * 60)
 
     # Initialize and run agent
-    state = initialize_state(repo_url)
+    state = initialize_state(repo_url, model=model)
     final_state = run_agent(state)
 
     print("\nAgent completed.")
