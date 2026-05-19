@@ -50,11 +50,11 @@ cp .env.example .env
 
 ## Usage
 
-### Audit a Local Project (e.g., vibe-align)
-Run the auditor against your current working directory to find gaps in your latest changes:
+### Audit a Local Project
+Run the auditor against a local directory to find gaps in your latest changes:
 
 ```bash
-.venv/bin/python main.py /Users/niro/projects/vibe-align
+.venv/bin/python main.py /path/to/your/project
 ```
 
 ### Audit a Remote Repository
@@ -85,6 +85,26 @@ Run the auditor against your current working directory to find gaps in your late
 
 - **Zero Data Exfiltration:** By using LiteLLM + Ollama, your source code is processed entirely on your local machine.
 - **Deterministic Logic:** Structural gaps are found via AST parsing, not LLM guessing, reducing the risk of "hallucinated" code review comments.
+
+## Evaluating Accuracy
+
+The `evals/` directory contains a lightweight harness for measuring agent accuracy across two levels:
+
+**Step A — gap detection (fast, no LLM needed):**
+```bash
+python evals/run_eval.py
+```
+Runs `TreeSitterAuditor.find_gaps` against labelled fixture repos and prints precision / recall / F1. Exits non-zero if any fixture drops below the pass threshold. Safe to run in CI.
+
+**Step B — end-to-end test generation (requires Ollama):**
+```bash
+python evals/run_eval.py --full
+```
+Runs the full agent against each fixture, then checks: does the generated test file collect under pytest? Does it pass? Does coverage on the target function increase?
+
+Use this for model A/B testing — swap `LITELLM_MODEL` in `.env` and re-run to compare.
+
+Fixtures live in `evals/fixtures/`. Each fixture is a small self-contained Python repo with an `expected.json` that declares the ground-truth gaps.
 
 ## Licence
 

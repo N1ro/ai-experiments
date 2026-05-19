@@ -1,7 +1,7 @@
 """Unit tests for the agentic QA workflow.
 
-All subprocess, filesystem, and API calls are mocked so these tests
-run without needing git, gh CLI, or an ANTHROPIC_API_KEY.
+All subprocess, filesystem, and LLM calls are mocked so these tests
+run without needing git, gh CLI, or Ollama.
 """
 
 import json
@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from agent.graph import (
-    analyze_functions,
     clone_repo,
     create_pull_request,
     initialize_state,
@@ -95,50 +94,14 @@ def test_list_python_files_caps_at_20():
     assert len(result) == 20
 
 
-# ============= analyze_functions =============
+# ============= find_testing_gaps =============
 
-def test_analyze_functions_finds_defs():
-    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
-        f.write("def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n")
-        path = f.name
-    try:
-        result = analyze_functions(path)
-        assert len(result) == 2
-        names = [r["name"] for r in result]
-        assert "add" in names
-        assert "subtract" in names
-        assert result[0]["line"] == 1
-    finally:
-        os.unlink(path)
-
-
-def test_analyze_functions_finds_async_defs():
-    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
-        f.write("async def fetch(url):\n    pass\n")
-        path = f.name
-    try:
-        result = analyze_functions(path)
-        assert len(result) == 1
-        assert result[0]["name"] == "fetch"
-    finally:
-        os.unlink(path)
-
-
-def test_analyze_functions_missing_file():
-    result = analyze_functions("/nonexistent/path.py")
-    assert len(result) == 1
-    assert "error" in result[0]
-
-
-def test_analyze_functions_empty_file():
-    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
-        f.write("# just a comment\n")
-        path = f.name
-    try:
-        result = analyze_functions(path)
-        assert result == []
-    finally:
-        os.unlink(path)
+def test_find_testing_gaps_error_path():
+    with patch("agent.graph.TreeSitterAuditor") as mock_cls:
+        mock_cls.return_value.find_gaps.side_effect = Exception("parser crashed")
+        from agent.graph import find_testing_gaps
+        result = find_testing_gaps("/some/path")
+    assert result == [{"error": "parser crashed"}]
 
 
 # ============= write_test =============
@@ -205,53 +168,47 @@ def test_create_pull_request_exception():
 
 # ============= run_agent =============
 
-def _mock_response(tool_calls=None, stop_reason="end_turn"):
-    """Build a mock Anthropic Message response."""
-    content = []
+def _mock_litellm_response(tool_calls=None):
+    """Build a mock litellm ModelResponse."""
+    message = MagicMock()
     if tool_calls:
+        message.tool_calls = []
         for tc in tool_calls:
-            block = MagicMock()
-            block.type = "tool_use"
-            block.id = f"toolu_{tc['name']}"
-            block.name = tc["name"]
-            block.input = tc["input"]
-            content.append(block)
+            call = MagicMock()
+            call.id = f"call_{tc['name']}"
+            call.function.name = tc["name"]
+            call.function.arguments = json.dumps(tc["input"])
+            message.tool_calls.append(call)
     else:
-        block = MagicMock()
-        block.type = "text"
-        block.text = "All done."
-        content.append(block)
+        message.tool_calls = None
+
+    choice = MagicMock()
+    choice.message = message
     response = MagicMock()
-    response.content = content
-    response.stop_reason = stop_reason
+    response.choices = [choice]
     return response
 
 
-def test_run_agent_stops_on_end_turn():
-    with patch("agent.graph.anthropic.Anthropic") as mock_cls:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value = _mock_response(stop_reason="end_turn")
+def test_run_agent_stops_when_no_tool_calls():
+    with patch("agent.graph.litellm.completion") as mock_completion:
+        mock_completion.return_value = _mock_litellm_response()
 
         state = initialize_state("https://github.com/user/repo")
         result = run_agent(state)
 
-    assert mock_client.messages.create.call_count == 1
+    assert mock_completion.call_count == 1
     assert result["pr_created"] is False
 
 
 def test_run_agent_executes_clone_tool():
-    tool_resp = _mock_response(
-        tool_calls=[{"name": "clone_repo", "input": {"repo_url": "https://github.com/user/repo"}}],
-        stop_reason="tool_use",
+    tool_resp = _mock_litellm_response(
+        tool_calls=[{"name": "clone_repo", "input": {"repo_url": "https://github.com/user/repo"}}]
     )
-    end_resp = _mock_response(stop_reason="end_turn")
+    end_resp = _mock_litellm_response()
 
-    with patch("agent.graph.anthropic.Anthropic") as mock_cls, \
+    with patch("agent.graph.litellm.completion") as mock_completion, \
          patch("agent.graph.clone_repo", return_value="/tmp/repo_xyz") as mock_clone:
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = [tool_resp, end_resp]
+        mock_completion.side_effect = [tool_resp, end_resp]
 
         state = initialize_state("https://github.com/user/repo")
         result = run_agent(state)
@@ -261,20 +218,17 @@ def test_run_agent_executes_clone_tool():
 
 
 def test_run_agent_sets_pr_created():
-    tool_resp = _mock_response(
+    tool_resp = _mock_litellm_response(
         tool_calls=[{
             "name": "create_pull_request",
             "input": {"repo_path": "/tmp/repo", "title": "Add tests", "body": "body"},
-        }],
-        stop_reason="tool_use",
+        }]
     )
-    end_resp = _mock_response(stop_reason="end_turn")
+    end_resp = _mock_litellm_response()
 
-    with patch("agent.graph.anthropic.Anthropic") as mock_cls, \
+    with patch("agent.graph.litellm.completion") as mock_completion, \
          patch("agent.graph.create_pull_request", return_value="PR created: https://github.com/x/y/pull/1"):
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.side_effect = [tool_resp, end_resp]
+        mock_completion.side_effect = [tool_resp, end_resp]
 
         state = initialize_state("https://github.com/user/repo")
         result = run_agent(state)
@@ -284,18 +238,15 @@ def test_run_agent_sets_pr_created():
 
 def test_run_agent_respects_max_iterations():
     """Agent loop does not exceed 10 iterations."""
-    tool_resp = _mock_response(
-        tool_calls=[{"name": "clone_repo", "input": {"repo_url": "https://github.com/user/repo"}}],
-        stop_reason="tool_use",
+    tool_resp = _mock_litellm_response(
+        tool_calls=[{"name": "clone_repo", "input": {"repo_url": "https://github.com/user/repo"}}]
     )
 
-    with patch("agent.graph.anthropic.Anthropic") as mock_cls, \
+    with patch("agent.graph.litellm.completion") as mock_completion, \
          patch("agent.graph.clone_repo", return_value="/tmp/repo"):
-        mock_client = MagicMock()
-        mock_cls.return_value = mock_client
-        mock_client.messages.create.return_value = tool_resp
+        mock_completion.return_value = tool_resp
 
         state = initialize_state("https://github.com/user/repo")
         run_agent(state)
 
-    assert mock_client.messages.create.call_count == 10
+    assert mock_completion.call_count == 10
