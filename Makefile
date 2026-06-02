@@ -1,4 +1,4 @@
-.PHONY: help setup dev stop clean test ingest-samples delete-all reset setup-03
+.PHONY: help setup dev stop clean test ingest-samples delete-all reset setup-03 deploy-agents
 
 help:
 	@echo "AI Experiments — Local Development Setup"
@@ -12,6 +12,7 @@ help:
 	@echo "  make delete-all      Wipe all documents from the knowledge base"
 	@echo "  make test            Run tests for all projects"
 	@echo "  make setup-03        Install dependencies for project 03 (needs ANTHROPIC_API_KEY)"
+	@echo "  make deploy-agents   Install QA agents globally (~/.claude/agents/)"
 	@echo "  make clean           Remove virtual environments and caches"
 	@echo ""
 	@echo "Quick start:"
@@ -21,6 +22,10 @@ help:
 	@echo ""
 	@echo "After a test session with added docs:"
 	@echo "  make reset                     # Wipe and reload just the sample docs"
+	@echo ""
+	@echo "On a new machine (e.g. tech test):"
+	@echo "  1. git clone git@github.com:N1ro/ai-experiments.git"
+	@echo "  2. make deploy-agents          # Install Claude Code agents globally"
 
 setup:
 	@echo "Installing dependencies for Project 01 (RAG) and Project 02 (MCP Server)..."
@@ -98,6 +103,13 @@ test:
 	@echo ""
 	@echo "Running tests for Project 03 (Agentic QA)..."
 	cd 03-agentic-qa && .venv/bin/pytest tests/ -v
+
+deploy-agents:
+	@echo "Installing QA agents to ~/.claude/agents/ ..."
+	@bash qa-tooling/deploy.sh
+	@echo ""
+	@echo "Installed agents:"
+	@ls ~/.claude/agents/*.md 2>/dev/null | xargs -I{} basename {} || echo "  (none found)"
 
 clean:
 	@echo "Cleaning up virtual environments and caches..."
